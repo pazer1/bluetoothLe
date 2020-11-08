@@ -23,7 +23,6 @@ class BluetoothLeService:Service()  {
     val binder = LocalBinder()
     private var writeCharacteristic:BluetoothGattCharacteristic? = null
     private var readCharacteristic:BluetoothGattCharacteristic? = null
-    private var notifyChracteristic:BluetoothGattCharacteristic? = null
     private var writeBuffer = arrayListOf<ByteArray>()
 
 
@@ -34,9 +33,6 @@ class BluetoothLeService:Service()  {
         bluetoothManager.adapter
     }
 
-    private val BLUETOOTH_LE_TIO_CHAR_RX_CREDITS =
-        UUID.fromString("00000004-0000-1000-8000-008025000000") // I
-
     private val BLUETOOTH_LE_RN4870_SERVICE =
         UUID.fromString("49535343-FE7D-4AE5-8FA9-9FAFD205E455")
     private val BLUETOOTH_LE_CCCD = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
@@ -45,9 +41,6 @@ class BluetoothLeService:Service()  {
     private var payloadSize = DEFAULT_MTU-3
     private val BLUETOOTH_LE_RN4870_CHAR_RW =
         UUID.fromString("49535343-1e4d-4bd9-ba61-23c647249616")
-    private val writeUUid = "49535343-fe7d-4ae5-8fa9-9fafd205e455"
-    private val readUUid = UUID.fromString("49535343-1E4D-4BD9-BA61-23C647249616")
-    var bluetoothGattServiceList = mutableListOf<BluetoothGattService>()
 
     inner class LocalBinder : Binder(){val service = this@BluetoothLeService}
 
@@ -84,8 +77,6 @@ class BluetoothLeService:Service()  {
         val ACTION_GATT_CONNECTED = "ACTION_GATT_CONNECTED"
         val ACTION_GATT_DISCONNECTED = "ACTION_GATT_DISCONNECTED"
         val ACTION_GATT_SERVICES_DISCOVERED = "ACTION_GATT_DISCOVERED"
-        val ACTION_DATA_AVAILABLE = "ACTION_DATA_AVAILABLE"
-        val EXTRA_DATA = "EXTRA_DATA"
     }
 
     private fun connectCharacteristics1(gatt: BluetoothGatt):Boolean{
@@ -96,8 +87,6 @@ class BluetoothLeService:Service()  {
                 BLUETOOTH_LE_RN4870_SERVICE -> {
                     writeCharacteristic = gattService.getCharacteristic(BLUETOOTH_LE_RN4870_CHAR_RW)
                     readCharacteristic = gattService.getCharacteristic(BLUETOOTH_LE_RN4870_CHAR_RW)
-//                    gatt.setCharacteristicNotification(readCharacteristic,true)
-//                    notifyChracteristic =gattService.getCharacteristic(BLUETOOTH_LE_TIO_CHAR_RX_CREDITS)
                     Log.d(TAG, "gattCharacteristic uuid = ${writeCharacteristic!!.uuid}")
                     connectCharacteristics3(gatt)
                 }
@@ -145,10 +134,6 @@ class BluetoothLeService:Service()  {
     }
     fun send(str: String) {
         Log.d(TAG, "send str = $str")
-//        if (!connected) {
-//            Toast.makeText(this@DeviceControlActivity, "not connected", Toast.LENGTH_SHORT).show()
-//            return
-//        }
         try {
             val msg: String
             val data: ByteArray
