@@ -1,5 +1,6 @@
 package com.example.bb_temperature
 
+import TextUtil
 import android.app.Service
 import android.bluetooth.*
 import android.content.Context
@@ -22,6 +23,7 @@ class BluetoothLeService:Service()  {
     val binder = LocalBinder()
     private var writeCharacteristic:BluetoothGattCharacteristic? = null
     private var readCharacteristic:BluetoothGattCharacteristic? = null
+    private var notifyChracteristic:BluetoothGattCharacteristic? = null
     private var writeBuffer = arrayListOf<ByteArray>()
 
 
@@ -32,6 +34,9 @@ class BluetoothLeService:Service()  {
         bluetoothManager.adapter
     }
 
+    private val BLUETOOTH_LE_TIO_CHAR_RX_CREDITS =
+        UUID.fromString("00000004-0000-1000-8000-008025000000") // I
+
     private val BLUETOOTH_LE_RN4870_SERVICE =
         UUID.fromString("49535343-FE7D-4AE5-8FA9-9FAFD205E455")
     private val BLUETOOTH_LE_CCCD = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
@@ -39,7 +44,7 @@ class BluetoothLeService:Service()  {
     private var DEFAULT_MTU = 23
     private var payloadSize = DEFAULT_MTU-3
     private val BLUETOOTH_LE_RN4870_CHAR_RW =
-        UUID.fromString("49535343-1E4D-4BD9-BA61-23C647249616")
+        UUID.fromString("49535343-1e4d-4bd9-ba61-23c647249616")
     private val writeUUid = "49535343-fe7d-4ae5-8fa9-9fafd205e455"
     private val readUUid = UUID.fromString("49535343-1E4D-4BD9-BA61-23C647249616")
     var bluetoothGattServiceList = mutableListOf<BluetoothGattService>()
@@ -91,6 +96,8 @@ class BluetoothLeService:Service()  {
                 BLUETOOTH_LE_RN4870_SERVICE -> {
                     writeCharacteristic = gattService.getCharacteristic(BLUETOOTH_LE_RN4870_CHAR_RW)
                     readCharacteristic = gattService.getCharacteristic(BLUETOOTH_LE_RN4870_CHAR_RW)
+//                    gatt.setCharacteristicNotification(readCharacteristic,true)
+//                    notifyChracteristic =gattService.getCharacteristic(BLUETOOTH_LE_TIO_CHAR_RX_CREDITS)
                     Log.d(TAG, "gattCharacteristic uuid = ${writeCharacteristic!!.uuid}")
                     connectCharacteristics3(gatt)
                 }
@@ -99,6 +106,8 @@ class BluetoothLeService:Service()  {
         return false
     }
     fun connectCharacteristics3(gatt: BluetoothGatt){
+        gatt.setCharacteristicNotification(readCharacteristic,true);
+        gatt.setCharacteristicNotification(readCharacteristic,true);
         var writeProperties = writeCharacteristic!!.properties
         Log.d(TAG, "writeProperties $writeProperties")
         if (writeProperties and BluetoothGattCharacteristic.PROPERTY_WRITE +  // Microbit,HM10-clone have WRITE
@@ -120,16 +129,19 @@ class BluetoothLeService:Service()  {
             return
         }
         var readProperties = readCharacteristic!!.properties
+        Log.d(TAG,"readChracter ")
         if (readProperties and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0) {
             Log.d(TAG, "enable read indication")
             bluetoothDescriptor.setValue(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE)
-        } else if (readProperties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0) {
+        }
+        if (readProperties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0) {
             Log.d(TAG, "enable read notification")
             bluetoothDescriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
         } else {
             Log.d(TAG, "writeProperties erorr occured 4")
             return
         }
+        gatt.writeDescriptor(bluetoothDescriptor)
     }
     fun send(str: String) {
         Log.d(TAG, "send str = $str")
@@ -143,10 +155,10 @@ class BluetoothLeService:Service()  {
             val sb = StringBuilder()
             var textUtil = TextUtil.create()
             textUtil!!.toHexString(sb, textUtil.fromHexString(str)!!)
-            Log.d(TAG,"sb toString = ${sb.toString()}")
+            Log.d(TAG, "sb toString = ${sb.toString()}")
             textUtil!!.toHexString(sb, textUtil.newline_crlf.toByteArray())
             msg = sb.toString()
-            Log.d(TAG,"msg = $msg")
+            Log.d(TAG, "msg = $msg")
             data = textUtil!!.fromHexString(msg)!!
             val spn = SpannableStringBuilder(
                 """
@@ -225,7 +237,7 @@ class BluetoothLeService:Service()  {
         ) {
             Log.d(
                 TAG,
-                "characteristic description = ${characteristic!!.descriptors} characteris value = ${characteristic.value} characet = ${characteristic.properties}"
+                "onCharacteristicRead = ${characteristic!!.descriptors} characteris value = ${characteristic.value} characet = ${characteristic.properties} charater = ${characteristic.descriptors.get(0)}"
             )
             when(status){
                 BluetoothGatt.GATT_SUCCESS -> run {
@@ -237,12 +249,17 @@ class BluetoothLeService:Service()  {
             gatt: BluetoothGatt?,
             characteristic: BluetoothGattCharacteristic?
         ) {
+
             Log.d(
                 TAG,
-                "characteristic description = ${characteristic!!.descriptors} characteris value = ${characteristic.value} characet = ${characteristic.properties}"
+                "characteristic onCharacteristicChanged = ${characteristic!!.descriptors} " +
+                        "characteris value = ${characteristic.value} characet = ${characteristic.properties}  charater = ${characteristic.descriptors.get(0)}" +
+                        "charateris get String value = ${characteristic.getStringValue(0)}" +
+                        ""
             )
-
             super.onCharacteristicChanged(gatt, characteristic)
+            var data:ByteArray = characteristic.value
+            Log.d(TAG,TextUtil.create().toHexString(data))
         }
 
         override fun onCharacteristicWrite(
@@ -251,67 +268,70 @@ class BluetoothLeService:Service()  {
             status: Int
         ) {
             super.onCharacteristicWrite(gatt, characteristic, status)
-            Log.d(TAG, "characteristic change")
+            Log.d(
+                TAG,
+                "characteristic write gatt = ${gatt} characteristic = ${characteristic} status = ${status}"
+            )
         }
 
         override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
-            Log.d(TAG, "characteristic description")
+            Log.d(TAG, "characteristic onMuteChange gatt = ${gatt} mtu = ${mtu} status = ${status}")
 
             super.onMtuChanged(gatt, mtu, status)
         }
     }
 
-    private val gattServerCallback = object : BluetoothGattServerCallback() {
-        override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
-            if(newState == BluetoothProfile.STATE_CONNECTED){
-                Log.d(TAG, "BluetoothDevice Connect =  $device")
-            }else if (newState == BluetoothProfile.STATE_DISCONNECTED){
-                Log.d(TAG, "BluetoothDevice Disconnecte =  $device")
-            }
-        }
-
-        override fun onCharacteristicReadRequest(
-            device: BluetoothDevice?,
-            requestId: Int,
-            offset: Int,
-            characteristic: BluetoothGattCharacteristic?
-        ) {
-            super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
-            Log.d(TAG, "BluetoothDevice onCharacteristicReadRequest Character =  $characteristic")
-        }
-
-        override fun onDescriptorReadRequest(
-            device: BluetoothDevice?,
-            requestId: Int,
-            offset: Int,
-            descriptor: BluetoothGattDescriptor?
-        ) {
-            super.onDescriptorReadRequest(device, requestId, offset, descriptor)
-            Log.d(
-                TAG,
-                "BluetoothDevice onCharacteristicDescriptionRequest Character =  ${descriptor!!.characteristic}"
-            )
-        }
-    }
-
-    public fun getSupportedGattServices():MutableList<BluetoothGattService> = bluetoothGattServiceList
-
-
-    fun writeCharacteristic(characteristic: BluetoothGattCharacteristic, data: ByteArray){
-        Log.d(TAG, "writeCharacteristic data = $data")
-        Log.d(TAG, "writeCharacteristic BluetoothGattCharacteristic = ${characteristic.uuid}")
-        characteristic.value = data
-        characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-        bluetoothGatt?.writeCharacteristic(characteristic)
-        for(bluetoothService in bluetoothGattServiceList){
-            for(characteristic in bluetoothService.characteristics){
-            }
-        }
-    }
-
-    private fun sendData(data: String){
-
-    }
+//    private val gattServerCallback = object : BluetoothGattServerCallback() {
+//        override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
+//            if(newState == BluetoothProfile.STATE_CONNECTED){
+//                Log.d(TAG, "BluetoothDevice Connect =  $device")
+//            }else if (newState == BluetoothProfile.STATE_DISCONNECTED){
+//                Log.d(TAG, "BluetoothDevice Disconnecte =  $device")
+//            }
+//        }
+//
+//        override fun onCharacteristicReadRequest(
+//            device: BluetoothDevice?,
+//            requestId: Int,
+//            offset: Int,
+//            characteristic: BluetoothGattCharacteristic?
+//        ) {
+//            super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
+//            Log.d(TAG, "BluetoothDevice onCharacteristicReadRequest Character =  $characteristic")
+//        }
+//
+//        override fun onDescriptorReadRequest(
+//            device: BluetoothDevice?,
+//            requestId: Int,
+//            offset: Int,
+//            descriptor: BluetoothGattDescriptor?
+//        ) {
+//            super.onDescriptorReadRequest(device, requestId, offset, descriptor)
+//            Log.d(
+//                TAG,
+//                "BluetoothDevice onCharacteristicDescriptionRequest Character =  ${descriptor!!.characteristic}"
+//            )
+//        }
+//    }
+//
+//    public fun getSupportedGattServices():MutableList<BluetoothGattService> = bluetoothGattServiceList
+//
+//
+//    fun writeCharacteristic(characteristic: BluetoothGattCharacteristic, data: ByteArray){
+//        Log.d(TAG, "writeCharacteristic data = $data")
+//        Log.d(TAG, "writeCharacteristic BluetoothGattCharacteristic = ${characteristic.uuid}")
+//        characteristic.value = data
+//        characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+//        bluetoothGatt?.writeCharacteristic(characteristic)
+//        for(bluetoothService in bluetoothGattServiceList){
+//            for(characteristic in bluetoothService.characteristics){
+//            }
+//        }
+//    }
+//
+//    private fun sendData(data: String){
+//
+//    }
 
 
     private fun broadcastUpdate(action: String){
