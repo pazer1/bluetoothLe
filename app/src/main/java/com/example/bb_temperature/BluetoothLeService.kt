@@ -259,6 +259,8 @@ class BluetoothLeService:Service()  {
             )
             super.onCharacteristicChanged(gatt, characteristic)
             var data:ByteArray = characteristic.value
+            var stringData = TextUtil.create().toHexString(data)
+            broadcastUpdate("DATA_ACTION",stringData)
             Log.d(TAG,TextUtil.create().toHexString(data))
         }
 
@@ -336,6 +338,9 @@ class BluetoothLeService:Service()  {
 
     private fun broadcastUpdate(action: String){
         sendBroadcast(Intent(action))
+    }
+    private fun broadcastUpdate(action: String,data:String){
+        sendBroadcast(Intent(action).putExtra("data",data))
     }
 }
 

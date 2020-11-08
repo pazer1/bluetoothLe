@@ -1,7 +1,6 @@
 package com.example.bb_temperature
 
 import android.bluetooth.BluetoothDevice
-import android.bluetooth.le.BluetoothLeScanner
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -18,6 +17,7 @@ class RecyclerAdapter(var items: List<BluetoothDevice>?)
 
     private val TAG = "RecyclerAdapter"
     lateinit var mContext: Context
+    private var clickItem:ClickItem? = null
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int)
             : ViewHolder {
@@ -48,17 +48,29 @@ class RecyclerAdapter(var items: List<BluetoothDevice>?)
             nameTextView.text = item.name?:"noName"
             textView.text= item.address
             if(nameTextView.text.contains("RN")){
-                nameTextView.setTextSize(30.toFloat())
+                nameTextView.textSize = 30.toFloat()
                 nameTextView.setTextColor(Color.RED)
+            }else{
+                nameTextView.textSize = 15.toFloat()
+                nameTextView.setTextColor(Color.BLACK)
             }
             linearLayout.setOnClickListener {
                 Log.d(TAG,"버튼 클릭됨!!!")
+                clickItem?.onClick()
                 var intent = Intent(mContext,DeviceControlActivity::class.java)
                 intent.putExtra("address",item.address)
-                intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TASK
                 mContext.startActivity(intent)
             }
             Log.d(TAG,"text =${textView.text}")
         }
+    }
+
+    public fun setClickItem(click:ClickItem){
+        this.clickItem = clickItem
+    }
+
+    public interface ClickItem{
+        fun onClick()
     }
 }
