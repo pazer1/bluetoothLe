@@ -8,81 +8,115 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.Handler
 import android.util.Log
 import android.widget.Button
-import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.annotation.RequiresApi
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
 class MainActivity : AppCompatActivity() {
 
-    private fun PackageManager.missingSystemFeature(name:String):Boolean = !hasSystemFeature(name)
+    private fun PackageManager.missingSystemFeature(name: String):Boolean = !hasSystemFeature(name)
 
     private val TAG = MainActivity::class.java.simpleName
     private var requiredPermission = arrayOf(
         Manifest.permission.ACCESS_FINE_LOCATION
     )
+    private val SCAN_PERIOD = 10000
+    private val REQUEST_ENABLE_BT = 1011
+    private val BluetoothAdapter.isDisabled:Boolean get() = !isEnabled
+
+    private var mScanning:Boolean = false
+
+
     private val singlePermissionCode = 99
     private val multiplePermissionCode = 100
     private var recyclerView:RecyclerView?=null
     private var recyclerAdapter:RecyclerAdapter?=null;
-    private var mScanning:Boolean = false
-    private var arrayDevices = ArrayList<BluetoothDevice>()
+    private var devices = ArrayList<BluetoothDevice>()
     private val handler = Handler()
-    private val SCAN_PERIOD = 10000
-    private val scanCallback = object:ScanCallback(){
-        override fun onScanFailed(errorCode: Int) {
-            super.onScanFailed(errorCode)
-            Toast.makeText(this@MainActivity, "스캔에 실패했습니다.", Toast.LENGTH_SHORT).show()
-        }
 
-        override fun onScanResult(callbackType: Int, result: ScanResult?) {
-            result?.let{
-                Log.d(TAG,"onScanResult = ${result.toString()}")
-                if(!arrayDevices.contains(it.device)){
-                    Log.d(TAG,"device Inserted ${result.device}")
-                    arrayDevices.add(it.device)
-                    recyclerAdapter!!.notifyDataSetChanged()
-                }
-            }
+    private val bluetoothAdapter:BluetoothAdapter? by lazy(LazyThreadSafetyMode.NONE){
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        bluetoothManager.adapter
+    }
+
+    private val sharedPreference: SharedPreferences? by lazy(LazyThreadSafetyMode.NONE){
+        getSharedPreferences("bleConnected", MODE_PRIVATE)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        Log.d(TAG, "MainActivity Created")
+        setContentView(R.layout.activity_main)
+
+        packageManager.takeIf { it.missingSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE) }?.also {
+            Toast.makeText(this, "이 앱은 블루투스를 지원하지 않습니다", Toast.LENGTH_SHORT).show()
+            finish()
         }
-        override fun onBatchScanResults(results: MutableList<ScanResult>?) {
-            results?.let{
-                Log.d(TAG,"onBatchScanResults = ${results}")
-                for(result in it){
-                    if(!arrayDevices.contains(result.device))arrayDevices.add(result.device)
-                }
+        checkSelfPermission()
+        val button : Button = findViewById(R.id.service_btn)
+        button.setOnClickListener {
+            bluetoothAdapter?.takeIf { it.isDisabled }?.apply {
+                val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
             }
+            scanBluetooth(true)
+        }
+        recyclerView = findViewById(R.id.device_recycler)
+        recyclerAdapter = RecyclerAdapter(devices)
+        recyclerView!!.adapter = recyclerAdapter
+        button.setOnClickListener {
+            recyclerAdapter?.setClickItem(object:RecyclerAdapter.ClickItem{
+                override fun onClick() {
+                    bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
+                }
+            })
+            scanBluetooth(true)
         }
     }
 
-    private fun scanLeDevice(enable:Boolean){
-        Log.d(TAG,"scanLeDevice Enable = ${enable}")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if(requestCode == REQUEST_ENABLE_BT && resultCode == RESULT_OK){
+            scanBluetooth(true)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        var isConnected = sharedPreference?.getString("isConnected","false")
+        var deviceName = sharedPreference?.getString("deviceName","noName")
+        var deviceAddress = sharedPreference?.getString("deviceAddress","")
+        if(isConnected.equals("true") && !deviceAddress.isNullOrEmpty()){
+            startActivity(Intent(this,DeviceControlActivity::class.java).putExtra("deviceName",deviceName).putExtra("deviceAddress",deviceAddress).setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        }
+    }
+
+    private fun scanBluetooth(enable: Boolean){
+        Log.d(TAG, "scanLeDevice Enable = ${enable}")
         when(enable){
-            true->{
+            true -> {
                 handler.postDelayed({
                     mScanning = false
-                    bluetoothAdapter!!.bluetoothLeScanner.stopScan(scanCallback)
-                },SCAN_PERIOD.toLong())
+                    bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
+                }, SCAN_PERIOD.toLong())
                 mScanning = true
-                arrayDevices.clear()
-                recyclerView?.let{
-                    Log.d(TAG,"scanLeDevice recycler not null")
+                recyclerView?.let { it ->
+                    devices.clear()
                     it.recycledViewPool.clear()
-                    recyclerAdapter?.let {
-                        Log.d(TAG,"scanLeDevice recyclerAdapter not null")
-                        it.notifyDataSetChanged() }
+                    recyclerAdapter?.notifyDataSetChanged()
                 }
-                bluetoothAdapter!!.bluetoothLeScanner.startScan(scanCallback)
+                bluetoothAdapter?.bluetoothLeScanner?.startScan(scanCallback)
             }
             else->{
                 mScanning = false
@@ -91,63 +125,53 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val bluetoothAdapter:BluetoothAdapter? by lazy(LazyThreadSafetyMode.NONE){
-        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        bluetoothManager.adapter
-    }
+    private val scanCallback = object:ScanCallback(){
+        override fun onScanFailed(errorCode: Int) {
+            super.onScanFailed(errorCode)
+            Toast.makeText(this@MainActivity, "스캔에 실패했습니다.", Toast.LENGTH_SHORT).show()
+        }
 
-    @RequiresApi(Build.VERSION_CODES.O)
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        Log.d(TAG,"MainActivity Created")
-        setContentView(R.layout.activity_main)
-        checkSelfPermission()
-        val button : Button = findViewById(R.id.service_btn)
-        recyclerView = findViewById(R.id.device_recycler)
-        recyclerAdapter = RecyclerAdapter(arrayDevices)
-        recyclerView!!.adapter = recyclerAdapter
-        button.setOnClickListener {
-            Intent(this,MainService::class.java).also {
-//                startForegroundService(it)
-//                var customBleConnector = BluetoothConnect.makeBleConnector(this@MainActivity)
-//                customBleConnector.scanLeDevice(true)
-//                recyclerView = findViewById(R.id.device_recycler)
-//                val hashMap:HashMap<String,String> = HashMap()
-//                val list = arrayListOf<HashMap<String,String>>()
-//                list.add(hashMap)
-//                hashMap["test"] = "testValue"
-//                recyclerAdapter = RecyclerAdapter(list)
-//                recyclerView!!.adapter = recyclerAdapter
-//                recyclerAdapter!!.notifyDataSetChanged()
-                scanLeDevice(true)
+        override fun onScanResult(callbackType: Int, result: ScanResult?) {
+            result?.let{
+                Log.d(TAG, "onScanResult = ${result.toString()}")
+                if(!devices.contains(it.device)){
+                    Log.d(TAG, "device Inserted ${result.device}")
+                    devices.add(it.device)
+                    recyclerAdapter!!.notifyDataSetChanged()
+                }
+            }
+        }
+        override fun onBatchScanResults(results: MutableList<ScanResult>?) {
+            results?.let{
+                Log.d(TAG, "onBatchScanResults = ${results}")
+                for(result in it){
+                    if(!devices.contains(result.device))devices.add(result.device)
+                }
             }
         }
     }
-
-    override fun onResume() {
-        super.onResume()
-        //블루투스 미지원 기기 확인
-        packageManager.takeIf {it.missingSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)}?.also {
-            Toast.makeText(this, "블루투스가 지원되지 않는 기기입니다.", Toast.LENGTH_SHORT).show()
-            finish()
-        }
-    }
-
 
     private fun checkSelfPermission(){
         var rejectPermissionList = ArrayList<String>()
         for(permission in requiredPermission){
-            if(ContextCompat.checkSelfPermission(this,permission) != PackageManager.PERMISSION_GRANTED){
+            if(ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED){
                 rejectPermissionList.add(permission)
             }
         }
-        if(ActivityCompat.shouldShowRequestPermissionRationale(this@MainActivity,Manifest.permission.ACCESS_FINE_LOCATION)){
-            Toast.makeText(this@MainActivity,"위치권한을 허가하지 않으면 앱을 실행시킬수 없습니다.",Toast.LENGTH_SHORT).show()
+        if(ActivityCompat.shouldShowRequestPermissionRationale(
+                this@MainActivity,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )){
+            Toast.makeText(this@MainActivity, "위치권한을 허가하지 않으면 앱을 실행시킬수 없습니다.", Toast.LENGTH_SHORT).show()
             finish()
         }else if(rejectPermissionList.isNotEmpty()){
-            Log.d(TAG,"rejectedPermission List = "+rejectPermissionList.get(0))
+            Log.d(TAG, "rejectedPermission List = " + rejectPermissionList.get(0))
             var array = arrayOfNulls<String>(rejectPermissionList.size)
-            ActivityCompat.requestPermissions(this,rejectPermissionList.toArray(array),multiplePermissionCode)
+            ActivityCompat.requestPermissions(
+                this,
+                rejectPermissionList.toArray(array),
+                multiplePermissionCode
+            )
         }
     }
 
@@ -157,10 +181,14 @@ class MainActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         when(requestCode){
-            multiplePermissionCode ->{
-                if(grantResults.isNotEmpty()){
-                    for((i,permission) in permissions.withIndex()){
-                        ActivityCompat.requestPermissions(this,requiredPermission,singlePermissionCode)
+            multiplePermissionCode -> {
+                if (grantResults.isNotEmpty()) {
+                    for ((i, permission) in permissions.withIndex()) {
+                        ActivityCompat.requestPermissions(
+                            this,
+                            requiredPermission,
+                            singlePermissionCode
+                        )
                     }
                 }
             }

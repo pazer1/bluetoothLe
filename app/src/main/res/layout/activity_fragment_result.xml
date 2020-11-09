@@ -7,34 +7,75 @@
     android:padding="10dp"
     tools:context=".DeviceControlActivity">
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/turnBtn"
-        android:text="turonOn"
+    <LinearLayout
+        android:id="@+id/infor_container"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        tools:layout_editor_absoluteY="0dp" />
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/readBtn"
-        android:text="read"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toEndOf="@id/turnBtn"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        tools:layout_editor_absoluteY="0dp" />
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/turnoffBtn"
-        android:text="turonOff"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toEndOf="@id/readBtn"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        tools:layout_editor_absoluteY="0dp" />
-    <TextView
-        android:id="@+id/result_tv"
-        app:layout_constraintTop_toBottomOf="@id/turnoffBtn"
+        android:orientation="horizontal"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"/>
+        android:gravity="right"
+        android:layout_height="30dp">
+        <TextView
+            android:layout_marginRight="20dp"
+            android:id="@+id/device_name"
+            android:textSize="20sp"
+            android:text="this is device"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"/>
+        <TextView
+            android:text="연결 끊기"
+            android:textSize="20sp"
+            android:id="@+id/disconnect_btn"
+            android:layout_gravity="right"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"/>
+    </LinearLayout>
+
+
+    <LinearLayout
+        android:id="@+id/buttonPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="horizontal"
+        app:layout_constraintTop_toBottomOf="@id/infor_container"
+        tools:layout_editor_absoluteX="10dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/turnBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="turonOn"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:layout_editor_absoluteY="0dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/readBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="read"
+            app:layout_constraintStart_toEndOf="@id/turnBtn"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:layout_editor_absoluteY="0dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/turnoffBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="turonOff"
+            app:layout_constraintStart_toEndOf="@id/readBtn"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:layout_editor_absoluteY="0dp" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_margin="20dp"
+        android:gravity="bottom"
+        android:id="@+id/result_tv"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/buttonPanel"
+         />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
