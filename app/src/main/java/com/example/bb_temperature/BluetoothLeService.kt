@@ -3,32 +3,40 @@ package com.example.bb_temperature
 import TextUtil
 import android.app.*
 import android.bluetooth.*
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
 import android.content.*
-import android.os.Binder
-import android.os.Build
-import android.os.IBinder
+import android.os.*
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
 import android.util.Log
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.content.edit
 import java.util.*
+import kotlin.collections.ArrayList
+
 
 class BluetoothLeService:Service()  {
     private val TAG:String = "BluetoothLeService"
-    val STATE_DISCONNECTED = 0
-    val STATE_CONNECTING = 1
-    val STATE_CONNECTED = 2
-    var connectionState = STATE_DISCONNECTED
+    private val STATE_DISCONNECTED = 0
+    private val STATE_CONNECTING = 1
+    private val STATE_CONNECTED = 2
+    private var connectionState = STATE_DISCONNECTED
     var bluetoothGatt:BluetoothGatt? = null
-    val binder = LocalBinder()
+    private val binder = LocalBinder()
+    private var icallBack:ICallback? = null
+    private var scanStopHandler:Handler? = null
     private val DATA_ACTION = "TEMPERATURE_DATA_ACTION"
     private val DIGITALCOMPAION_MANAGER_TEMPDATA = "digitalcompanion.temp.data"
     private var writeCharacteristic:BluetoothGattCharacteristic? = null
     private var readCharacteristic:BluetoothGattCharacteristic? = null
     private var writeBuffer = arrayListOf<ByteArray>()
     private var CHANNEL_ID = "FOREGROUND_CHANNEL"
+    private val SCAN_PERIOD = 10000
+    private val SCAN_STOP_ID = 99
+    private var devices:ArrayList<BluetoothDevice>? = null
 
     private val sharedPreference:SharedPreferences? by lazy(LazyThreadSafetyMode.NONE){
         getSharedPreferences("bleConnected", MODE_PRIVATE)
@@ -58,23 +66,34 @@ class BluetoothLeService:Service()  {
 
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "온스트 커맨드 서비스 시작됨")
+        Log.d(TAG, "온스타트 커맨드 서비스 시작됨")
+        when(intent?.action){
+            "RemoteStart" -> {
+                Log.d(TAG, "RemoteStat 시작됨")
+                var deviceAddress = sharedPreference?.getString("deviceAddress", "")
+                if (deviceAddress != "") {
+                    connect(deviceAddress)
+                    Toast.makeText(this, "연결이 완료 되었습니다.", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "디바이스 정보가 없습니다.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
         startForeground(1,makeNotification())
-        sharedPreference?.edit { this.putString("isServiceRunning","true")}
         return START_STICKY
-
     }
 
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "BluetoothLeService Started")
+        sharedPreference?.edit { this.putString("isServiceRunning","true")}
         var br: BroadcastReceiver = serviceBoradcast
         var filter = IntentFilter()
         filter.addAction(DIGITALCOMPAION_MANAGER_TEMPDATA)
         registerReceiver(br, filter)
     }
     
-    fun connect(address: String):Boolean{
+    fun connect(address: String?):Boolean{
         Log.d(TAG,"device Connecting")
         var device = bluetoothAdapter.getRemoteDevice(address)
         bluetoothGatt = device.connectGatt(this, false, gattCallback, 2)
@@ -92,6 +111,67 @@ class BluetoothLeService:Service()  {
         val ACTION_GATT_CONNECTED = "ACTION_GATT_CONNECTED"
         val ACTION_GATT_DISCONNECTED = "ACTION_GATT_DISCONNECTED"
         val ACTION_GATT_SERVICES_DISCOVERED = "ACTION_GATT_DISCOVERED"
+    }
+
+    fun registerCallback(cb:ICallback){
+        icallBack = cb
+    }
+
+    fun scanStart(enable:Boolean,devices: ArrayList<BluetoothDevice>){
+        Log.d(TAG,"bluetoothService scanStart enable = $enable")
+        when(enable){
+            true->{
+                this.devices = devices
+                devices?.clear()
+                scanStopHandler = object : Handler() {
+                    override fun handleMessage(msg: Message) {
+                        when(msg.what){
+                            99->{
+                                Log.d(TAG,"scan Stop Message")
+                                bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
+                            }
+                        }
+                    }
+                }
+                scanStopHandler?.sendEmptyMessageDelayed(SCAN_STOP_ID, SCAN_PERIOD.toLong())
+                bluetoothAdapter?.bluetoothLeScanner?.startScan(scanCallback)
+            }
+            else->{
+                bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
+            }
+        }
+    }
+
+    fun cancelHandler(id:Int){
+        when(id){
+            SCAN_STOP_ID->scanStopHandler?.removeMessages(SCAN_STOP_ID)
+        }
+    }
+
+    private val scanCallback = object:ScanCallback(){
+        override fun onScanFailed(errorCode: Int) {
+            super.onScanFailed(errorCode)
+            Log.d(TAG,"onScanFailed scanError = ${errorCode}")
+            when(errorCode){
+                1 -> {
+                    Log.d(TAG,"이미 디바이스 서치가 시작됬습니다.")
+                }
+                else ->{
+                    Toast.makeText(this@BluetoothLeService, "스캔에 실패했습니다.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        override fun onScanResult(callbackType: Int, result: ScanResult?) {
+            result?.let {
+                Log.d(TAG,"onScanResult = ${result}")
+                if(!devices!!.contains(it.device)){
+                    Log.d(TAG,"device inserted ${result.device}")
+                    devices?.add(it.device)
+                    icallBack?.addRecyclerView()
+                }
+            }
+        }
     }
 
     private fun connectCharacteristics1(gatt: BluetoothGatt):Boolean{
@@ -155,7 +235,7 @@ class BluetoothLeService:Service()  {
             val sb = StringBuilder()
             var textUtil = TextUtil.create()
             textUtil!!.toHexString(sb, textUtil.fromHexString(str)!!)
-            Log.d(TAG, "sb toString = ${sb.toString()}")
+            Log.d(TAG, "sb toString = ${sb}")
             textUtil!!.toHexString(sb, textUtil.newline_crlf.toByteArray())
             msg = sb.toString()
             Log.d(TAG, "msg = $msg")
@@ -213,16 +293,19 @@ class BluetoothLeService:Service()  {
                     broadcastUpdate(ACTION_GATT_CONNECTED)
                     var isGattServiceConnect = gatt!!.discoverServices()
                     Log.d(TAG, "isGattServicecon = $isGattServiceConnect")
-
                     Log.d(
                         TAG,
                         "device Connected gattDevice = ${gatt!!.device} gattService = ${gatt.services} "
                     )
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
+                    //버튼을 눌러서 직접 끊는 것과 여러 다른 상황으로 끊기는 걸 구분해야 한다.
+                    //그냥 끊길때 일단 conn을 정리하자.
+                    bluetoothGatt?.disconnect()
+                    bluetoothGatt?.close()
+                    bluetoothGatt = null
                     Log.d(TAG, "device disConnected")
-                    sharedPreference?.edit {this.putString("isConnected","false")}
-                    sharedPreference?.edit {this.putString("deviceAddress","")}
+                    //직접 끊을때만 닫는다.
                     connectionState = STATE_DISCONNECTED
                     broadcastUpdate(ACTION_GATT_DISCONNECTED)
                 }
@@ -323,22 +406,34 @@ class BluetoothLeService:Service()  {
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.d(TAG,"bluetoothServcie onDestory")
         sharedPreference?.edit { this.putString("isServiceRunning","false")}
-        bluetoothGatt?.disconnect()
-        bluetoothGatt?.close()
-        unregisterReceiver(serviceBoradcast)
+        try{
+            unregisterReceiver(serviceBoradcast)
+        }catch (e:java.lang.Exception){
+            e.printStackTrace()
+        }
     }
+
+
 
     var serviceBoradcast = object:BroadcastReceiver(){
         override fun onReceive(context: Context?, intent: Intent?) {
             when(intent?.action){
                 DIGITALCOMPAION_MANAGER_TEMPDATA->{
+                    if(connectionState != BluetoothGatt.STATE_CONNECTED ){
+                        Log.d(TAG,"notConnected")
+                        broadcastUpdate(DATA_ACTION,"notConnected")
+                        return
+                    }
                     when(intent.getStringExtra("request")){
                         "getTemperature"-> {
+                            //만일 send 했을 때 없다면
                             var byteString = "02 52 44 03 15"
                             send(byteString)
                         }
                         "turnOn"->{
+                            //read할때 항상키자.
                             var byteString = "02 52 54 31 03 34"
                             send(byteString)
                         }
@@ -351,5 +446,9 @@ class BluetoothLeService:Service()  {
             }
         }
     }
+    public interface ICallback{
+        fun addRecyclerView()
+    }
 }
+
 

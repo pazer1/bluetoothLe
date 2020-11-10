@@ -33,9 +33,11 @@ class DeviceControlActivity : AppCompatActivity(){
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             bluetoothService = (service as BluetoothLeService.LocalBinder).service
             if(isConnected.equals("false")){
+                if(deviceAddress == "")deviceAddress=
+                    sharedPreference?.getString("deviceAddress","").toString()
                 bluetoothService?.connect(deviceAddress)
             }
-            Log.d(TAG, "blueToothService Connected")
+            Log.d(TAG, "blueToothService Connected = ${bluetoothService}")
         }
     }
 
@@ -57,31 +59,22 @@ class DeviceControlActivity : AppCompatActivity(){
             sharedPreference?.edit {this.putString("isConnected","false")}
             sharedPreference?.edit { this.putString("deviceAddress","")}
             sharedPreference?.edit { this.putString("deviceName","")}
-            bluetoothService?.stopSelf()
+            try{
+                bluetoothService?.unbindService(serviceConnection)
+            }catch (e:Exception){
+                e.printStackTrace()
+            }
+            bluetoothService?.stopForeground(true)
             finish()
         }
         isConnected = sharedPreference?.getString("isConnected","false")
         Log.d(TAG,"isConnected = $isConnected")
-        var isServiceRunnig:String? = sharedPreference?.getString("isServiceRunning","false")
-        val gattServiceIntent = Intent(
-            this@DeviceControlActivity,
-            BluetoothLeService::class.java
-        )
-        if(isServiceRunnig.equals("false")){
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                startForegroundService(gattServiceIntent)
-            }else{
-                startService(gattServiceIntent)
-            }
-        }
-        bindService(gattServiceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
         tv = findViewById(R.id.result_tv)
         findViewById<TextView>(R.id.device_name).also {
             it.text = deviceName
         }
 
         var turnOnBtn = findViewById<View>(R.id.turnBtn)
-
         turnOnBtn.setOnClickListener {
             Log.d(TAG, "deviceAddress = ${deviceAddress}")
             var byteString = "02 52 54 31 03 34"
@@ -127,7 +120,6 @@ class DeviceControlActivity : AppCompatActivity(){
                 }
                 BluetoothLeService.ACTION_GATT_DISCONNECTED -> {
                     connected = false
-                    disconnectTextView?.text = "연결 하기"
                     Toast.makeText(this@DeviceControlActivity, "블루투스 연결이 끊겼습니다", Toast.LENGTH_SHORT)
                         .show()
                 }
@@ -141,6 +133,15 @@ class DeviceControlActivity : AppCompatActivity(){
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        bindService(
+            Intent(this, BluetoothLeService::class.java),
+            serviceConnection,
+            Context.BIND_AUTO_CREATE
+        )
     }
 
     override fun onDestroy() {

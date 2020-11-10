@@ -67,7 +67,7 @@ class RecyclerAdapter(var items: List<BluetoothDevice>?)
         }
     }
 
-    public fun setClickItem(click:ClickItem){
+    public fun setClickItem(click: () -> Unit){
         this.clickItem = clickItem
     }
 

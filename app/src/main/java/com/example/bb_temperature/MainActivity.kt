@@ -1,18 +1,18 @@
 package com.example.bb_temperature
 
 import android.Manifest
+import android.app.ActivityManager
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
-import android.content.Context
-import android.content.Intent
-import android.content.SharedPreferences
+import android.content.*
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.os.IBinder
 import android.util.Log
 import android.widget.Button
 import android.widget.Toast
@@ -22,6 +22,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 
+
 class MainActivity : AppCompatActivity() {
 
     private fun PackageManager.missingSystemFeature(name: String):Boolean = !hasSystemFeature(name)
@@ -30,12 +31,13 @@ class MainActivity : AppCompatActivity() {
     private var requiredPermission = arrayOf(
         Manifest.permission.ACCESS_FINE_LOCATION
     )
-    private val SCAN_PERIOD = 10000
+
+    private var isServiceRunning:Boolean? = false
+    private val SCAN_STOP_ID = 99
     private val REQUEST_ENABLE_BT = 1011
     private val BluetoothAdapter.isDisabled:Boolean get() = !isEnabled
 
     private var mScanning:Boolean = false
-
 
     private val singlePermissionCode = 99
     private val multiplePermissionCode = 100
@@ -43,6 +45,8 @@ class MainActivity : AppCompatActivity() {
     private var recyclerAdapter:RecyclerAdapter?=null;
     private var devices = ArrayList<BluetoothDevice>()
     private val handler = Handler()
+    private var bleCustomService:BluetoothLeService? = null
+    private var button:Button? = null
 
     private val bluetoothAdapter:BluetoothAdapter? by lazy(LazyThreadSafetyMode.NONE){
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -64,92 +68,112 @@ class MainActivity : AppCompatActivity() {
             finish()
         }
         checkSelfPermission()
-        val button : Button = findViewById(R.id.service_btn)
-        button.setOnClickListener {
+        button = findViewById(R.id.service_btn)
+        button!!.setOnClickListener {
+            bleCustomService?.cancelHandler(SCAN_STOP_ID)
             bluetoothAdapter?.takeIf { it.isDisabled }?.apply {
                 val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
                 startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
             }
-            scanBluetooth(true)
+            devices.clear()
+            recyclerAdapter?.notifyDataSetChanged()
+            startCustomBleService();
         }
         recyclerView = findViewById(R.id.device_recycler)
         recyclerAdapter = RecyclerAdapter(devices)
+        recyclerAdapter!!.setClickItem{
+            bleCustomService?.scanStart(false,devices)
+        }
         recyclerView!!.adapter = recyclerAdapter
-        button.setOnClickListener {
-            recyclerAdapter?.setClickItem(object:RecyclerAdapter.ClickItem{
-                override fun onClick() {
-                    bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
-                }
-            })
-            scanBluetooth(true)
+    }
+
+    private fun isMyServiceRunning(serviceClass: Class<*>): Boolean {
+        val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+        for (service in manager.getRunningServices(Int.MAX_VALUE)) {
+            if (serviceClass.name == service.service.className) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun startCustomBleService(){
+        Log.d(TAG, "customBleService Start")
+        var isServiceRunnig = sharedPreference?.getString("isServiceRunning", "false")
+        if(isServiceRunnig.equals("false") || !isMyServiceRunning(BluetoothLeService.javaClass)){
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(Intent(this@MainActivity, BluetoothLeService::class.java))
+            }else{
+                startService(Intent(this@MainActivity, BluetoothLeService::class.java))
+            }
+        }
+        bindService(
+            Intent(this@MainActivity, BluetoothLeService::class.java),
+            serviceConnection,
+            Context.BIND_AUTO_CREATE
+        )
+        if(isServiceRunning!!){
+            bleCustomService.let {
+                it!!.scanStart(true, devices)
+            }
         }
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+
+    }
+
+    private val serviceConnection = object: ServiceConnection {
+        override fun onServiceDisconnected(name: ComponentName?) {
+            bleCustomService = null
+            isServiceRunning = false
+        }
+
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            Log.d(TAG, "customBleService Connected")
+            bleCustomService = (service as BluetoothLeService.LocalBinder).service
+            bleCustomService?.registerCallback(iCallback)
+            bleCustomService?.scanStart(true, devices)
+            isServiceRunning = true
+        }
+    }
+
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if(requestCode == REQUEST_ENABLE_BT && resultCode == RESULT_OK){
-            scanBluetooth(true)
+            startCustomBleService()
         }
     }
 
     override fun onResume() {
         super.onResume()
-        var isConnected = sharedPreference?.getString("isConnected","false")
-        var deviceName = sharedPreference?.getString("deviceName","noName")
-        var deviceAddress = sharedPreference?.getString("deviceAddress","")
+        if(devices.size >0){
+            devices.clear()
+            recyclerAdapter?.notifyDataSetChanged()
+        }
+        var isConnected = sharedPreference?.getString("isConnected", "false")
+        var deviceName = sharedPreference?.getString("deviceName", "noName")
+        var deviceAddress = sharedPreference?.getString("deviceAddress", "")
         if(isConnected.equals("true") && !deviceAddress.isNullOrEmpty()){
-            startActivity(Intent(this,DeviceControlActivity::class.java).putExtra("deviceName",deviceName).putExtra("deviceAddress",deviceAddress).setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP))
-        }
-    }
-
-    private fun scanBluetooth(enable: Boolean){
-        Log.d(TAG, "scanLeDevice Enable = ${enable}")
-        when(enable){
-            true -> {
-                handler.postDelayed({
-                    mScanning = false
-                    bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
-                }, SCAN_PERIOD.toLong())
-                mScanning = true
-                recyclerView?.let { it ->
-                    devices.clear()
-                    it.recycledViewPool.clear()
-                    recyclerAdapter?.notifyDataSetChanged()
-                }
-                bluetoothAdapter?.bluetoothLeScanner?.startScan(scanCallback)
-            }
-            else->{
-                mScanning = false
-                bluetoothAdapter!!.bluetoothLeScanner.stopScan(scanCallback)
-            }
-        }
-    }
-
-    private val scanCallback = object:ScanCallback(){
-        override fun onScanFailed(errorCode: Int) {
-            super.onScanFailed(errorCode)
-            Toast.makeText(this@MainActivity, "스캔에 실패했습니다.", Toast.LENGTH_SHORT).show()
+            startActivity(
+                Intent(this, DeviceControlActivity::class.java).putExtra(
+                    "deviceName",
+                    deviceName
+                ).putExtra("deviceAddress", deviceAddress).setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            )
         }
 
-        override fun onScanResult(callbackType: Int, result: ScanResult?) {
-            result?.let{
-                Log.d(TAG, "onScanResult = ${result.toString()}")
-                if(!devices.contains(it.device)){
-                    Log.d(TAG, "device Inserted ${result.device}")
-                    devices.add(it.device)
-                    recyclerAdapter!!.notifyDataSetChanged()
-                }
-            }
-        }
-        override fun onBatchScanResults(results: MutableList<ScanResult>?) {
-            results?.let{
-                Log.d(TAG, "onBatchScanResults = ${results}")
-                for(result in it){
-                    if(!devices.contains(result.device))devices.add(result.device)
-                }
-            }
-        }
+
     }
+
+    private val iCallback = (object:BluetoothLeService.ICallback{
+        override fun addRecyclerView() {
+            //리사이클러 오면 add device
+            recyclerAdapter?.notifyDataSetChanged()
+        }
+    })
 
     private fun checkSelfPermission(){
         var rejectPermissionList = ArrayList<String>()
