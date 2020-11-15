@@ -274,7 +274,7 @@ class BluetoothLeService:Service()  {
                 )
             }
             writeCharacteristic?.value = data0
-            Log.d(TAG, "writeCharacteristic = " + writeCharacteristic!!.uuid.toString())
+            Log.d(TAG, "writeCharacteristic = " + writeCharacteristic?.uuid?.toString())
             bluetoothGatt?.writeCharacteristic(writeCharacteristic)
         }
     }
