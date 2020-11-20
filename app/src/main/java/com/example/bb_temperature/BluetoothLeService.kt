@@ -15,6 +15,8 @@ import android.util.Log
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.content.edit
+import com.example.bb_temperature.util.CommVal
+import com.example.bb_temperature.util.CommVal.DATA_ACTION
 import java.util.*
 import kotlin.collections.ArrayList
 
@@ -28,7 +30,6 @@ class BluetoothLeService:Service() {
     private val binder = LocalBinder()
     private var icallBack: ICallback? = null
     private var scanStopHandler: Handler? = null
-    private val DATA_ACTION = "TEMPERATURE_DATA_ACTION"
     private val DIGITALCOMPAION_MANAGER_TEMPDATA = "digitalcompanion.temp.data"
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
     private var readCharacteristic: BluetoothGattCharacteristic? = null
@@ -276,7 +277,7 @@ class BluetoothLeService:Service() {
         }
     }
 
-    public fun write(data: ByteArray) {
+    private fun write(data: ByteArray) {
         var data0: ByteArray
         synchronized(writeBuffer) {
             if (data.size <= PAYLOADSIZE) {
@@ -341,26 +342,12 @@ class BluetoothLeService:Service() {
             gatt: BluetoothGatt?,
             characteristic: BluetoothGattCharacteristic?,
             status: Int
-        ) {
-            Log.d(
-                TAG,
-                "onCharacteristicRead = ${characteristic!!.descriptors} characteris value = ${characteristic.value} characet = ${characteristic.properties} charater = ${
-                    characteristic.descriptors.get(
-                        0
-                    )
-                }"
-            )
-            when (status) {
-                BluetoothGatt.GATT_SUCCESS -> run {
-                }
-            }
-        }
+        ) {Log.d(TAG,"onCharacteristicRead = ${characteristic!!.descriptors} characteris value = ${characteristic.value} characet = ${characteristic.properties} charater = ${characteristic.descriptors.get(0)}")}
 
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt?,
             characteristic: BluetoothGattCharacteristic?
         ) {
-
             Log.d(
                 TAG,
                 "characteristic onCharacteristicChanged = ${characteristic!!.descriptors} " +
@@ -459,35 +446,16 @@ class BluetoothLeService:Service() {
                         if(!reconnectDevcie.isNullOrEmpty())connect(reconnectDevcie)
                     }
                     when (intent.getStringExtra("request")) {
-                        "getTemperature" -> {
-                            //만일 send 했을 때 없다면
-                            var byteString = "02 52 44 03 15"
-                            send(byteString)
-                        }
-                        "turnOn" -> {
-                            //read할때 항상키자.
-                            var byteString = "02 52 54 31 03 34"
-                            send(byteString)
-                        }
-                        "turnOff" -> {
-                            var byteString = "02 52 54 30 03 35"
-                            send(byteString)
-                        }
+                        "getTemperature" -> {send(CommVal.read)}
+                        "turnOn" -> {send(CommVal.turnOn)}
+                        "turnOff" -> {send(CommVal.turnOff)}
                     }
                 }
-//                "android.intent.action.ACTION_POWER_CONNECTED" -> {
-//                    var reconnectDevcie = sharedPreference?.getString("deviceAddress", "")
-//                    Log.d(TAG,"reconnectDevice = $reconnectDevcie")
-//                    if (!reconnectDevcie.isNullOrEmpty()) {
-//                        Log.d(TAG,"reconnectDevice not null")
-//                        connect(reconnectDevcie)
-//                    }
-//                }
             }
         }
     }
 
-    public interface ICallback {
+    interface ICallback {
         fun addRecyclerView()
     }
 }

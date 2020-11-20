@@ -118,19 +118,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if(devices.size >0){
+        devices.takeIf { it.size>0 }?: run {
             devices.clear()
             recyclerAdapter?.notifyDataSetChanged()
         }
         var isConnected = sharedPreference?.getString("isConnected", "false")
         var deviceName = sharedPreference?.getString("deviceName", "noName")
         var deviceAddress = sharedPreference?.getString("deviceAddress", "")
+        Log.d(TAG,"[onResume] isMyserviceRunning = ${isMyServiceRunning()}")
         if(isConnected.equals("true") && !deviceAddress.isNullOrEmpty() && isMyServiceRunning()){
             startActivity(
-                Intent(this, DeviceControlActivity::class.java).putExtra(
-                    "deviceName",
-                    deviceName
-                ).putExtra("deviceAddress", deviceAddress).setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                Intent(this, DeviceControlActivity::class.java).putExtra("deviceName",deviceName).putExtra("deviceAddress", deviceAddress).setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
             )
         }
     }
@@ -187,7 +185,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun isMyServiceRunning(): Boolean {
         val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
-        for (service in manager.getRunningServices(Int.MAX_VALUE)) {service.service.shortClassName.takeIf { it==myServiceName }?:return true}
+        Log.d(TAG,"[isMyServiceRunning] myServiceName = $myServiceName")
+        for (service in manager.getRunningServices(Int.MAX_VALUE)) {
+            if(service.service.shortClassName == myServiceName){
+                return true
+            }
+        }
         return false
     }
 }

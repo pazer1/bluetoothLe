@@ -10,6 +10,10 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.edit
+import com.example.bb_temperature.util.CommVal.DATA_ACTION
+import com.example.bb_temperature.util.CommVal.read
+import com.example.bb_temperature.util.CommVal.turnOff
+import com.example.bb_temperature.util.CommVal.turnOn
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.concurrent.timerTask
@@ -20,10 +24,9 @@ class DeviceControlActivity : AppCompatActivity(){
     private val TAG = DeviceControlActivity::class.simpleName
     private var deviceAddress:String = ""
     private var bluetoothService:BluetoothLeService? = null
-    private val DATA_ACTION = "TEMPERATURE_DATA_ACTION"
     private var deviceName = ""
     private var disconnectTextView:TextView? = null
-    var connected:Boolean = false
+    private var connected:Boolean = false
     private var tv:TextView? = null
     private var isConnected:String? =""
     private var simpleDataFormat:SimpleDateFormat? = null
@@ -81,39 +84,14 @@ class DeviceControlActivity : AppCompatActivity(){
         }
 
         var turnOnBtn = findViewById<View>(R.id.turnBtn)
-        turnOnBtn.setOnClickListener {
-            Log.d(TAG, "deviceAddress = ${deviceAddress}")
-            var byteString = "02 52 54 31 03 34"
-            bluetoothService?.let {
-                    it.send(
-                        byteString
-                    )
-            }
-        }
         var readBtn = findViewById<View>(R.id.readBtn)
-        readBtn.setOnClickListener {
-            Log.d(TAG, "readBtn")
-            var byteString = "02 52 44 03 15"
-            bluetoothService?.let {
-                Timer().schedule(timerTask {
-                    Log.d(TAG, "timerTask")
-                    it.send(
-                        byteString
-                    )
-                }, 10000, 3000)
-            }
-        }
         var turnOffBtn = findViewById<View>(R.id.turnoffBtn)
-        turnOffBtn.setOnClickListener {
-            var byteString = "02 52 54 30 03 35"
-            bluetoothService?.let {
-                Log.d(TAG,"bluetoothTurnOff btn Pressed")
-                it.send(
-                    byteString
-                )
-            }
-        }
         var filter = IntentFilter()
+
+        turnOnBtn.setOnClickListener {bluetoothService?.let {it.send(turnOn)}}
+        readBtn.setOnClickListener {bluetoothService?.let {Timer().schedule(timerTask {it.send(read)}, 10000, 3000)}}
+        turnOffBtn.setOnClickListener {bluetoothService?.let {it.send(turnOff)} }
+
         filter.addAction(BluetoothLeService.ACTION_GATT_CONNECTED)
         filter.addAction(BluetoothLeService.ACTION_GATT_DISCONNECTED)
         filter.addAction(BluetoothLeService.ACTION_GATT_SERVICES_DISCOVERED)
