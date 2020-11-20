@@ -34,12 +34,10 @@ class DeviceControlActivity : AppCompatActivity(){
         }
 
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            Log.d(TAG,"bindService find")
             bluetoothService = (service as BluetoothLeService.LocalBinder).service
-            if(isConnected.equals("false")){
-                if(deviceAddress == "")deviceAddress=
-                    sharedPreference?.getString("deviceAddress", "").toString()
-                bluetoothService?.connect(deviceAddress)
-            }
+            if(deviceAddress == "")deviceAddress= sharedPreference?.getString("deviceAddress", "").toString()
+            bluetoothService?.connect(deviceAddress)
             Log.d(TAG, "blueToothService Connected = ${bluetoothService}")
         }
     }
@@ -102,16 +100,17 @@ class DeviceControlActivity : AppCompatActivity(){
                     it.send(
                         byteString
                     )
-                }, 10000, 10000)
+                }, 10000, 3000)
             }
-            var turnOffBtn = findViewById<View>(R.id.turnoffBtn)
-            turnOffBtn.setOnClickListener {
-                var byteString = "02 52 54 30 03 35"
-                bluetoothService?.let {
-                    it.send(
-                        byteString
-                    )
-                }
+        }
+        var turnOffBtn = findViewById<View>(R.id.turnoffBtn)
+        turnOffBtn.setOnClickListener {
+            var byteString = "02 52 54 30 03 35"
+            bluetoothService?.let {
+                Log.d(TAG,"bluetoothTurnOff btn Pressed")
+                it.send(
+                    byteString
+                )
             }
         }
         var filter = IntentFilter()
@@ -127,7 +126,7 @@ class DeviceControlActivity : AppCompatActivity(){
             when(intent?.action){
                 BluetoothLeService.ACTION_GATT_CONNECTED -> {
                     connected = true
-                    disconnectTextView?.text = "연결 끊기"
+                    Toast.makeText(context, "연결 되었습니다.", Toast.LENGTH_SHORT).show()
                 }
                 BluetoothLeService.ACTION_GATT_DISCONNECTED -> {
                     connected = false
@@ -139,8 +138,7 @@ class DeviceControlActivity : AppCompatActivity(){
                 }
                 DATA_ACTION -> {
                     Log.d(TAG, "dataAction = ${intent.getStringExtra("data")}")
-                    var tvText = "${tv?.text}\n"
-                    tv?.text = tvText +"[${simpleDataFormat?.format(System.currentTimeMillis())}]" +intent.getStringExtra("data")
+                    tv?.text = "[${simpleDataFormat?.format(System.currentTimeMillis())}]" +intent.getStringExtra("data")
                 }
             }
         }

@@ -28,39 +28,32 @@ class MainActivity : AppCompatActivity() {
     private fun PackageManager.missingSystemFeature(name: String):Boolean = !hasSystemFeature(name)
 
     private val TAG = MainActivity::class.java.simpleName
-    private var requiredPermission = arrayOf(
-        Manifest.permission.ACCESS_FINE_LOCATION
-    )
-
+    private var requiredPermission = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    private var currentTime:Long?=0
     private var isServiceRunning:Boolean? = false
     private val SCAN_STOP_ID = 99
     private val REQUEST_ENABLE_BT = 1011
     private val BluetoothAdapter.isDisabled:Boolean get() = !isEnabled
-
-    private var mScanning:Boolean = false
-
     private val singlePermissionCode = 99
     private val multiplePermissionCode = 100
     private var recyclerView:RecyclerView?=null
-    private var recyclerAdapter:RecyclerAdapter?=null;
+    private var recyclerAdapter:RecyclerAdapter?=null
     private var devices = ArrayList<BluetoothDevice>()
-    private val handler = Handler()
     private var bleCustomService:BluetoothLeService? = null
     private var button:Button? = null
+    private val myServiceName = ".BluetoothLeService"
 
+    //변수에 접근할 때 객체생성해서 참조
     private val bluetoothAdapter:BluetoothAdapter? by lazy(LazyThreadSafetyMode.NONE){
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothManager.adapter
     }
-
-    private val sharedPreference: SharedPreferences? by lazy(LazyThreadSafetyMode.NONE){
-        getSharedPreferences("bleConnected", MODE_PRIVATE)
-    }
+    private val sharedPreference: SharedPreferences? by lazy(LazyThreadSafetyMode.NONE){getSharedPreferences("bleConnected", MODE_PRIVATE)}
 
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d(TAG, "MainActivity Created")
+        Log.d(TAG, "[onCreate]MainActivity Created")
         setContentView(R.layout.activity_main)
 
         packageManager.takeIf { it.missingSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE) }?.also {
@@ -68,18 +61,19 @@ class MainActivity : AppCompatActivity() {
             finish()
         }
         checkSelfPermission()
+
         button = findViewById(R.id.service_btn)
-        button!!.setOnClickListener {
-            bleCustomService?.cancelHandler(SCAN_STOP_ID)
-            bluetoothAdapter?.takeIf { it.isDisabled }?.apply {
+        recyclerView = findViewById(R.id.device_recycler)
+        button?.setOnClickListener {
+            bluetoothAdapter?.takeIf { it.isDisabled }.let {
                 val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
                 startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
             }
+            bleCustomService?.cancelHandler(SCAN_STOP_ID)
             devices.clear()
             recyclerAdapter?.notifyDataSetChanged()
             startCustomBleService();
         }
-        recyclerView = findViewById(R.id.device_recycler)
         recyclerAdapter = RecyclerAdapter(devices)
         recyclerAdapter!!.setClickItem{
             bleCustomService?.scanStart(false,devices)
@@ -87,41 +81,16 @@ class MainActivity : AppCompatActivity() {
         recyclerView!!.adapter = recyclerAdapter
     }
 
-    private fun isMyServiceRunning(serviceClass: Class<*>): Boolean {
-        val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
-        for (service in manager.getRunningServices(Int.MAX_VALUE)) {
-            if (serviceClass.name == service.service.className) {
-                return true
-            }
-        }
-        return false
-    }
+
 
     private fun startCustomBleService(){
-        Log.d(TAG, "customBleService Start")
         var isServiceRunnig = sharedPreference?.getString("isServiceRunning", "false")
-        if(isServiceRunnig.equals("false") || !isMyServiceRunning(BluetoothLeService.javaClass)){
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(Intent(this@MainActivity, BluetoothLeService::class.java))
-            }else{
-                startService(Intent(this@MainActivity, BluetoothLeService::class.java))
-            }
+        if(isServiceRunnig.equals("false") || !isMyServiceRunning()){
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(Intent(this@MainActivity, BluetoothLeService::class.java))
+            else startService(Intent(this@MainActivity, BluetoothLeService::class.java))
         }
-        bindService(
-            Intent(this@MainActivity, BluetoothLeService::class.java),
-            serviceConnection,
-            Context.BIND_AUTO_CREATE
-        )
-        if(isServiceRunning!!){
-            bleCustomService.let {
-                it!!.scanStart(true, devices)
-            }
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-
+        bindService(Intent(this@MainActivity, BluetoothLeService::class.java),serviceConnection,Context.BIND_AUTO_CREATE)
+        takeIf { isServiceRunning!!}?:bleCustomService?.let { it.scanStart(true,devices)}
     }
 
     private val serviceConnection = object: ServiceConnection {
@@ -156,7 +125,7 @@ class MainActivity : AppCompatActivity() {
         var isConnected = sharedPreference?.getString("isConnected", "false")
         var deviceName = sharedPreference?.getString("deviceName", "noName")
         var deviceAddress = sharedPreference?.getString("deviceAddress", "")
-        if(isConnected.equals("true") && !deviceAddress.isNullOrEmpty()){
+        if(isConnected.equals("true") && !deviceAddress.isNullOrEmpty() && isMyServiceRunning()){
             startActivity(
                 Intent(this, DeviceControlActivity::class.java).putExtra(
                     "deviceName",
@@ -164,13 +133,10 @@ class MainActivity : AppCompatActivity() {
                 ).putExtra("deviceAddress", deviceAddress).setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
             )
         }
-
-
     }
 
     private val iCallback = (object:BluetoothLeService.ICallback{
         override fun addRecyclerView() {
-            //리사이클러 오면 add device
             recyclerAdapter?.notifyDataSetChanged()
         }
     })
@@ -217,5 +183,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun isMyServiceRunning(): Boolean {
+        val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+        for (service in manager.getRunningServices(Int.MAX_VALUE)) {service.service.shortClassName.takeIf { it==myServiceName }?:return true}
+        return false
     }
 }
