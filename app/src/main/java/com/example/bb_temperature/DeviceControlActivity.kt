@@ -89,7 +89,7 @@ class DeviceControlActivity : AppCompatActivity(){
         var filter = IntentFilter()
 
         turnOnBtn.setOnClickListener {bluetoothService?.let {it.send(turnOn)}}
-        readBtn.setOnClickListener {bluetoothService?.let {Timer().schedule(timerTask {it.send(read)}, 10000, 3000)}}
+        readBtn.setOnClickListener {bluetoothService?.let {it.send(read)}}
         turnOffBtn.setOnClickListener {bluetoothService?.let {it.send(turnOff)} }
 
         filter.addAction(BluetoothLeService.ACTION_GATT_CONNECTED)
@@ -108,8 +108,9 @@ class DeviceControlActivity : AppCompatActivity(){
                 }
                 BluetoothLeService.ACTION_GATT_DISCONNECTED -> {
                     connected = false
-                    Toast.makeText(this@DeviceControlActivity, "블루투스 연결이 끊겼습니다", Toast.LENGTH_SHORT)
-                        .show()
+                    Log.d(TAG,"블루투스 연결이 끊겼습니다.")
+//                    Toast.makeText(this@DeviceControlActivity, "블루투스 연결이 끊겼습니다", Toast.LENGTH_SHORT)
+//                        .show()
                 }
                 BluetoothLeService.ACTION_GATT_SERVICES_DISCOVERED -> {
                     Toast.makeText(context, "준비됬습니다.", Toast.LENGTH_SHORT).show()

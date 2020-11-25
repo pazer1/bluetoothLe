@@ -104,21 +104,9 @@ class BluetoothLeService:Service() {
           return false
         }
         var device = bluetoothAdapter.getRemoteDevice(address)
-        bluetoothGatt?.let {
-            if(it.connect()){
-                Log.d(TAG,"이미 연결된 디바이스가 있습니다")
-                return true
-            }
-        }
-        bluetoothGatt = device.connectGatt(this, true, gattCallback, TRANSPORT_LE)
-        bluetoothGatt?.let {
-            return if (it.connect()) {
-                connectionState = STATE_CONNECTING
-                true
-            } else false
-        }
         connectionState = STATE_CONNECTING
         Log.d(TAG, "connectionState = $connectionState")
+        bluetoothGatt = device.connectGatt(this, false, gattCallback, TRANSPORT_LE)
         return true
     }
 
@@ -278,22 +266,28 @@ class BluetoothLeService:Service() {
     }
 
     private fun write(data: ByteArray) {
-        var data0: ByteArray
-        synchronized(writeBuffer) {
-            if (data.size <= PAYLOADSIZE) {
-                data0 = data
-            } else {
-                data0 = data.copyOfRange(0, PAYLOADSIZE-1)
+        if(connectionState == STATE_CONNECTED){
+            bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
+            var data0: ByteArray
+            synchronized(writeBuffer) {
+                if (data.size <= PAYLOADSIZE) {
+                    data0 = data
+                } else {
+                    data0 = data.copyOfRange(0, PAYLOADSIZE-1)
+                }
+                for (dataByte in data0) {
+                    Log.d(
+                        TAG,
+                        "writeCharacteristic = " + String.format("%02x ", dataByte)
+                    )
+                }
+                writeCharacteristic?.value = data0
+                Log.d(TAG, "writeCharacteristic = " + writeCharacteristic?.uuid?.toString())
+                bluetoothGatt?.writeCharacteristic(writeCharacteristic)
             }
-            for (dataByte in data0) {
-                Log.d(
-                    TAG,
-                    "writeCharacteristic = " + String.format("%02x ", dataByte)
-                )
-            }
-            writeCharacteristic?.value = data0
-            Log.d(TAG, "writeCharacteristic = " + writeCharacteristic?.uuid?.toString())
-            bluetoothGatt?.writeCharacteristic(writeCharacteristic)
+        }else{
+            Log.d(TAG,"[wirte] 연결안됨")
+            sendBroadcast(Intent(CommVal.DATA_ACTION).putExtra("data","notConnected"))
         }
     }
 
@@ -325,6 +319,7 @@ class BluetoothLeService:Service() {
                     bluetoothGatt = null
                     var reconnectDevcie = sharedPreference?.getString("deviceAddress", "")
                     if(!reconnectDevcie.isNullOrEmpty()){connect(reconnectDevcie)    }
+
                     broadcastUpdate(ACTION_GATT_DISCONNECTED)
                     //버튼을 눌러서 직접 끊는 것과 여러 다른 상황으로 끊기는 걸 구분해야 한다.
                     //그냥 끊길때 일단 conn을 정리하자.
