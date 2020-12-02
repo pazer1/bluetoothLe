@@ -102,11 +102,7 @@ class DeviceControlActivity : AppCompatActivity(){
         override fun onReceive(context: Context?, intent: Intent?) {
             Log.d(TAG, "bradcastAction = ${intent?.action}")
             when(intent?.action){
-                BluetoothLeService.ACTION_GATT_CONNECTED -> {
-                    connected = true
-                    Toast.makeText(context, "연결 되었습니다.", Toast.LENGTH_SHORT).show()
-                }
-                BluetoothLeService.ACTION_GATT_DISCONNECTED -> {
+                BluetoothLeService.ACTION_GATT_CONNECTED ->{
                     connected = false
                     Log.d(TAG,"블루투스 연결이 끊겼습니다.")
 //                    Toast.makeText(this@DeviceControlActivity, "블루투스 연결이 끊겼습니다", Toast.LENGTH_SHORT)
